@@ -12,7 +12,7 @@ from workspaces.resources import postgres_resource
 def create_table(context) -> String:
     table_name = context.op_config["table_name"]
     sql = f"CREATE TABLE IF NOT EXISTS {table_name} (column_1 VARCHAR(100));"
-    context.resources.database.execute_query(sql)
+    s3.execute_query(sql)
     return table_name
 
 
