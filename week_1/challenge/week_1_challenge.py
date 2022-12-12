@@ -2,7 +2,7 @@ import csv
 from datetime import datetime
 from heapq import nlargest
 from random import randint
-from typing import Iterator, List
+from typing import Iterator, List ,Union
 
 from dagster import (
     Any,
@@ -55,18 +55,38 @@ def csv_helper(file_name: str) -> Iterator[Stock]:
             yield Stock.from_list(row)
 
 
-@op
-def get_s3_data():
-    pass
+@op(
+    config_schema={"s3_key": String},
+    out={
+        "stocks": Out(is_required=False),
+        "empty_stocks": Out(is_required=False),
+    },
+)
+def get_s3_data(context)-> Union[List[Stock],None]:
+    s3_key = context.op_config["s3_key"]
+    stock_iterator = csv_helper(s3_key)
+    stocks = [stock for stock in stock_iterator]
+    if len(stocks) > 0 :
+        yield Output(stocks,"stocks")
+    else:
+        yield Output(None,"empty_stocks")
 
 
-@op
-def process_data():
-    pass
+@op(
+    ins={"stocks": In()},
+    out={"aggregation": Out()}
+)
+def process_data(context,stocks: List[Stock]) -> Aggregation:
+    sorted_stocks = sorted(stocks, key = lambda stock: stock.high, reverse=True)
+    highest_stock = sorted_stocks[0]
+    stock_date, stock_high = highest_stock.date, highest_stock.high
+    aggregation = Aggregation(date=stock_date, high=stock_high)
+    return aggregation
 
-
-@op
-def put_redis_data():
+@op(
+    ins={"aggregation": In()}
+)
+def put_redis_data(context,aggregation: Aggregation):
     pass
 
 
@@ -80,4 +100,7 @@ def empty_stock_notify(context, empty_stocks) -> Nothing:
 
 @job
 def week_1_challenge():
-    pass
+    stocks, empty_stocks = get_s3_data()
+    empty_stock_notify(empty_stocks)
+    put_redis_data(process_data(stocks))
+
